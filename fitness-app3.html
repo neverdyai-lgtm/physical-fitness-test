@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบทดสอบสมรรถภาพทางกาย</title>
+    <!-- Vue.js -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <style>
+        body { font-family: 'Kanit', sans-serif; background-color: #f3f4f6; }
+        .card { background: white; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .input-field { width: 100%; padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; margin-top: 4px; outline: none; transition: 0.3s; }
+        .input-field:focus { border-color: #3b82f6; ring: 2px; }
+        .btn { width: 100%; padding: 12px; border-radius: 8px; font-weight: 600; transition: 0.2s; cursor: pointer; }
+        .btn-primary { background-color: #3b82f6; color: white; }
+        .btn-primary:hover { background-color: #2563eb; }
+        .status-badge { padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: bold; white-space: nowrap; }
+        
+        .loader-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.95); z-index: 99; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 50; padding: 10px; }
+        .modal-content { background: white; border-radius: 16px; padding: 20px; width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto; }
+    </style>
+</head>
+<body>
+
+<div id="app" class="max-w-md mx-auto min-h-screen p-4 pb-20">
+
+    <!-- Loading -->
+    <div v-if="isLoading" class="loader-overlay">
+        <div class="spinner mb-3"></div>
+        <p class="text-blue-600 font-bold">กำลังเชื่อมต่อข้อมูล...</p>
+    </div>
+
+    <!-- Header -->
+    <header class="text-center mb-6 pt-4">
+        <h1 class="text-2xl font-bold text-gray-800">Physical Fitness Test</h1>
+        <p class="text-gray-500 text-sm">ระบบบันทึกและวิเคราะห์สมรรถภาพ</p>
+    </header>
+
+    <!-- 1. LOGIN SCREEN -->
+    <div v-if="currentPage === 'login'" class="card p-8 space-y-6">
+        <h2 class="text-xl font-bold text-center text-gray-700">เข้าสู่ระบบ</h2>
+        <div>
+            <label class="block text-sm font-medium text-gray-600 mb-1">รหัสนิสิต</label>
+            <input v-model="loginInput" type="text" class="input-field text-center text-lg" placeholder="กรอกรหัสนิสิตที่นี่">
+        </div>
+        <button @click="handleLogin" class="btn btn-primary shadow-lg">เข้าใช้งาน / ดูผลสอบ</button>
+        <!-- ลบคำใบ้รหัสผ่านออกแล้ว -->
+    </div>
+
+    <!-- 2. STUDENT INPUT FORM -->
+    <div v-if="currentPage === 'input'" class="space-y-4">
+        <div class="card p-6 border-l-4 border-blue-500">
+            <h3 class="text-lg font-bold text-blue-600 mb-3">ส่วนที่ 1: ข้อมูลทั่วไป</h3>
+            <div class="space-y-3">
+                <div class="grid grid-cols-2 gap-2">
+                    <input v-model="form.studentId" class="input-field bg-gray-100" disabled>
+                    <input v-model="form.section" class="input-field" placeholder="Section (เช่น 1)">
+                </div>
+                <input v-model="form.name" class="input-field" placeholder="ชื่อจริง">
+                <input v-model="form.surname" class="input-field" placeholder="นามสกุล">
+                <div class="grid grid-cols-2 gap-2">
+                    <input v-model.number="form.age" type="number" class="input-field" placeholder="อายุ">
+                    <select v-model="form.gender" class="input-field">
+                        <option value="male">ชาย</option>
+                        <option value="female">หญิง</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="card p-6 border-l-4 border-green-500">
+            <h3 class="text-lg font-bold text-green-600 mb-3">ส่วนที่ 2: ผลการทดสอบ</h3>
+            <div class="space-y-3">
+                <div class="grid grid-cols-2 gap-2">
+                    <div><label class="text-xs text-gray-500">น้ำหนัก (kg)</label><input v-model.number="form.weight" type="number" class="input-field"></div>
+                    <div><label class="text-xs text-gray-500">ส่วนสูง (cm)</label><input v-model.number="form.height" type="number" class="input-field"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div><label class="text-xs text-gray-500">รอบเอว (นิ้ว)</label><input v-model.number="form.waist" type="number" class="input-field"></div>
+                    <div><label class="text-xs text-gray-500">รอบสะโพก (นิ้ว)</label><input v-model.number="form.hip" type="number" class="input-field"></div>
+                </div>
+                <div><label class="text-xs text-gray-500">ความอ่อนตัว (cm)</label><input v-model.number="form.flexibility" type="number" class="input-field"></div>
+                <div><label class="text-xs text-gray-500">ลุกนั่ง (ครั้ง/นาที)</label><input v-model.number="form.situp" type="number" class="input-field"></div>
+                <div><label class="text-xs text-gray-500">ดันพื้น (ครั้ง/นาที)</label><input v-model.number="form.pushup" type="number" class="input-field"></div>
+                <div><label class="text-xs text-gray-500">ยืน-นั่ง (ครั้ง/นาที)</label><input v-model.number="form.standsit" type="number" class="input-field"></div>
+                <div><label class="text-xs text-gray-500">ยืนยกเข่า (ครั้ง/3นาที)</label><input v-model.number="form.stepup" type="number" class="input-field"></div>
+                <div><label class="text-xs text-gray-500">เดิน-วิ่ง 800ม. (นาที.วินาที)</label><input v-model="form.run800" type="text" class="input-field" placeholder="เช่น 3.45"></div>
+            </div>
+        </div>
+        <div class="flex gap-2">
+             <button @click="submitData" class="btn btn-primary flex-1 shadow-xl">บันทึกข้อมูล</button>
+             <button @click="logout" class="btn bg-gray-200 text-gray-600 w-1/3">ยกเลิก</button>
+        </div>
+    </div>
+
+    <!-- 3. RESULT SCREEN (Student View) -->
+    <div v-if="currentPage === 'result'" class="space-y-4">
+        <div class="card p-6 text-center">
+            <h2 class="text-xl font-bold text-gray-800">ผลการประเมิน</h2>
+            <p class="text-blue-600 font-medium text-lg">{{ form.name }} {{ form.surname }}</p>
+            <p class="text-gray-400 text-sm">ID: {{ form.studentId }}</p>
+            <div class="mt-4 h-64 relative"><canvas id="userRadarChart"></canvas></div>
+        </div>
+        <div class="card p-5">
+            <h3 class="font-bold text-gray-700 mb-3 border-b pb-2">รายละเอียดผลลัพธ์</h3>
+            <div class="space-y-2 text-sm">
+                <div v-for="(item, key) in evaluationResult" :key="key" class="flex justify-between items-center border-b border-gray-100 pb-1">
+                    <span class="text-gray-600">{{ item.label }} <span class="text-xs text-gray-400">({{ item.val }})</span></span>
+                    <span :class="getColorClass(item.status)" class="status-badge">{{ item.status }}</span>
+                </div>
+            </div>
+        </div>
+        <button @click="logout" class="btn bg-red-500 text-white shadow-lg">ออกจากระบบ</button>
+    </div>
+
+    <!-- 4. ADMIN DASHBOARD -->
+    <div v-if="currentPage === 'admin'" class="space-y-4">
+        <div class="flex justify-between items-center bg-white p-4 rounded-lg shadow">
+            <div>
+                <h2 class="text-xl font-bold text-gray-800">Admin Dashboard</h2>
+                <p class="text-xs text-gray-500">จัดการข้อมูลและดูภาพรวม</p>
+            </div>
+            <button @click="logout" class="text-xs text-red-500 font-bold border border-red-500 px-3 py-1 rounded hover:bg-red-50">Logout</button>
+        </div>
+
+        <!-- Filter & Stats -->
+        <div class="bg-white p-4 rounded-lg shadow space-y-3">
+            <div class="flex justify-between items-center">
+                <label class="text-sm font-bold text-gray-600">เลือก Section:</label>
+                <button @click="loadDataFromSheet" class="text-xs text-blue-500 underline">รีเฟรชข้อมูล</button>
+            </div>
+            <select v-model="adminFilterSection" class="input-field w-full" @change="updateAdminCharts">
+                <option value="all">แสดงทั้งหมด (All Sections)</option>
+                <option v-for="sec in uniqueSections" :value="sec">Section {{ sec }}</option>
+            </select>
+            
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-3 gap-2 text-center mt-2">
+                <div class="bg-blue-50 p-2 rounded">
+                    <p class="text-xs text-gray-500">จำนวนนิสิต</p>
+                    <p class="text-xl font-bold text-blue-600">{{ filteredStudents.length }}</p>
+                </div>
+                <div class="bg-green-50 p-2 rounded">
+                    <p class="text-xs text-gray-500">สมบูรณ์/ปกติ</p>
+                    <p class="text-xl font-bold text-green-600">{{ bmiStats.normal }}</p>
+                </div>
+                <div class="bg-red-50 p-2 rounded">
+                    <p class="text-xs text-gray-500">เริ่มอ้วน/อ้วน</p>
+                    <p class="text-xl font-bold text-red-600">{{ bmiStats.over + bmiStats.obese }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Overview Chart -->
+        <div class="card p-4">
+            <h3 class="font-bold text-gray-700 mb-2">ภาพรวม BMI ({{ adminFilterSection === 'all' ? 'ทั้งหมด' : 'Section ' + adminFilterSection }})</h3>
+            <div class="h-48 relative">
+                <canvas id="adminOverviewChart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Student List -->
+        <div class="card overflow-hidden">
+            <div class="bg-gray-100 p-3 font-bold text-gray-700 text-sm">รายชื่อนิสิต</div>
+            <div class="overflow-x-auto max-h-80 overflow-y-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-white text-gray-500 border-b">
+                        <tr>
+                            <th class="p-3">ID</th>
+                            <th class="p-3">ชื่อ</th>
+                            <th class="p-3">Sec</th>
+                            <th class="p-3 text-center">BMI</th>
+                            <th class="p-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 bg-white">
+                        <tr v-for="std in filteredStudents" :key="std.studentId" class="hover:bg-gray-50">
+                            <td class="p-3 font-medium">{{ std.studentId }}</td>
+                            <td class="p-3 truncate max-w-[100px]">{{ std.name }}</td>
+                            <td class="p-3">{{ std.section }}</td>
+                            <td class="p-3 text-center">
+                                <span :class="getBMIColor(std)" class="px-2 py-1 rounded text-xs font-bold">{{ calculateBMI(std) }}</span>
+                            </td>
+                            <td class="p-3 text-right">
+                                <button @click="showStudentDetail(std)" class="text-blue-500 border border-blue-500 px-2 py-1 rounded text-xs hover:bg-blue-50">ดูผล</button>
+                            </td>
+                        </tr>
+                        <tr v-if="filteredStudents.length === 0"><td colspan="5" class="p-4 text-center text-gray-400">ไม่พบข้อมูล (ตรวจสอบ Google Sheet)</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADMIN MODAL (Detail Popup) -->
+    <div v-if="adminSelectedStudent" class="modal-overlay" @click.self="adminSelectedStudent = null">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-4 border-b pb-2">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800">{{ adminSelectedStudent.name }} {{ adminSelectedStudent.surname }}</h3>
+                    <p class="text-xs text-gray-500">ID: {{ adminSelectedStudent.studentId }} | Sec: {{ adminSelectedStudent.section }}</p>
+                </div>
+                <button @click="adminSelectedStudent = null" class="text-gray-400 font-bold text-xl">&times;</button>
+            </div>
+            <div class="h-56 relative mb-4"><canvas id="adminRadarChart"></canvas></div>
+            <div class="bg-gray-50 p-3 rounded-lg space-y-2 text-sm">
+                 <div v-for="(item, key) in adminEvaluationResult" :key="key" class="flex justify-between items-center border-b border-gray-200 pb-1">
+                    <span class="text-gray-600">{{ item.label }}</span>
+                    <span :class="getColorClass(item.status)" class="status-badge">{{ item.status }}</span>
+                </div>
+            </div>
+            <div class="mt-4 text-center">
+                <button @click="adminSelectedStudent = null" class="btn bg-gray-200 text-gray-700 py-2 text-sm">ปิด</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const { createApp } = Vue;
+    // URL เดิมที่ Deploy ล่าสุด (Rg9jitA)
+    const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwY_RPI4KXKk3Iv1fIjLbEXliWmPw8QB-u-eRU7zkDCv5hUwhB9ixD3bTNYRg9jitA/exec'; 
+
+    createApp({
+        data() {
+            return {
+                isLoading: false,
+                currentPage: 'login',
+                loginInput: '',
+                form: { name: '', surname: '', age: null, studentId: '', section: '', gender: 'male', weight: null, height: null, waist: null, hip: null, flexibility: null, situp: null, pushup: null, standsit: null, stepup: null, run800: '' },
+                evaluationResult: {},
+                allStudents: [],
+                adminFilterSection: 'all',
+                adminSelectedStudent: null,
+                adminEvaluationResult: {},
+                myChart: null, adminChart: null, overviewChart: null,
+                bmiStats: { under: 0, normal: 0, over: 0, obese: 0 }
+            }
+        },
+        computed: {
+            uniqueSections() {
+                const secs = new Set(this.allStudents.map(s => s.section).filter(s => s));
+                return Array.from(secs).sort();
+            },
+            filteredStudents() {
+                // ย้อนกลับเพื่อให้ข้อมูลล่าสุดอยู่บนสุด
+                let list = [...this.allStudents].reverse();
+                if (this.adminFilterSection === 'all') return list;
+                return list.filter(s => String(s.section) == String(this.adminFilterSection));
+            }
+        },
+        methods: {
+            async loadDataFromSheet() {
+                this.isLoading = true;
+                try {
+                    const res = await fetch(GOOGLE_SCRIPT_URL);
+                    if (!res.ok) throw new Error('Connect Error');
+                    const data = await res.json();
+                    
+                    // แปลงค่า section เป็น string เพื่อการเปรียบเทียบที่แม่นยำ
+                    this.allStudents = data.map(s => ({
+                        ...s,
+                        section: s.section ? String(s.section) : ''
+                    }));
+                    
+                    if(this.currentPage === 'admin') this.updateAdminCharts();
+                } catch (e) {
+                    console.error(e);
+                    alert('เชื่อมต่อข้อมูลไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต');
+                } finally {
+                    this.isLoading = false;
+                }
+            },
+            async handleLogin() {
+                const input = this.loginInput.trim();
+                if (!input) return alert('กรุณากรอกข้อมูล');
+
+                // Case 1: พิมพ์ "88888888" -> เข้า Admin เลย
+                if (input === '88888888') {
+                    await this.loadDataFromSheet();
+                    this.currentPage = 'admin';
+                    this.$nextTick(() => this.updateAdminCharts());
+                    return;
+                }
+
+                // Case 2: พิมพ์ "admin" (เผื่อคนงง) -> ถามรหัสอีกที
+                if (input.toLowerCase() === 'admin') {
+                    const pass = prompt("กรุณากรอกรหัสผ่าน Admin:");
+                    if (pass === '88888888') {
+                        await this.loadDataFromSheet();
+                        this.currentPage = 'admin';
+                        this.$nextTick(() => this.updateAdminCharts());
+                    } else if (pass) {
+                        alert("รหัสผ่านไม่ถูกต้อง");
+                    }
+                    return;
+                }
+
+                // Case 3: เป็นนิสิต
+                await this.loadDataFromSheet();
+                const existingUser = this.allStudents.find(s => String(s.studentId) === String(input));
+                
+                if (existingUser) {
+                    this.form = { ...existingUser };
+                    this.evaluationResult = this.calculateStats(this.form);
+                    this.currentPage = 'result';
+                    this.$nextTick(() => this.renderChart('userRadarChart', this.evaluationResult));
+                } else {
+                    this.resetForm();
+                    this.form.studentId = input; 
+                    this.currentPage = 'input';
+                }
+            },
+            async submitData() {
+                if(!this.form.name || !this.form.weight) return alert('กรุณากรอกข้อมูลให้ครบถ้วน');
+                this.isLoading = true;
+                try {
+                    await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', body: JSON.stringify(this.form) });
+                    
+                    // บันทึกเสร็จแล้วโหลดข้อมูลใหม่เพื่อให้เป็นปัจจุบัน
+                    await this.loadDataFromSheet();
+                    
+                    this.evaluationResult = this.calculateStats(this.form);
+                    this.currentPage = 'result';
+                    this.$nextTick(() => this.renderChart('userRadarChart', this.evaluationResult));
+                } catch(e) {
+                    alert('บันทึกไม่สำเร็จ เช็คอินเทอร์เน็ต');
+                } finally {
+                    this.isLoading = false;
+                }
+            },
+            logout() {
+                this.loginInput = '';
+                this.resetForm();
+                this.currentPage = 'login';
+                this.adminSelectedStudent = null;
+            },
+            resetForm() {
+                this.form = { name: '', surname: '', age: null, studentId: '', section: '', gender: 'male', weight: null, height: null, waist: null, hip: null, flexibility: null, situp: null, pushup: null, standsit: null, stepup: null, run800: '' };
+            },
+            showStudentDetail(std) {
+                this.adminSelectedStudent = std;
+                this.adminEvaluationResult = this.calculateStats(std);
+                this.$nextTick(() => this.renderChart('adminRadarChart', this.adminEvaluationResult));
+            },
+            updateAdminCharts() {
+                // คำนวณ BMI Stats ของ Section ปัจจุบัน
+                const stats = { under: 0, normal: 0, over: 0, obese: 0 };
+                this.filteredStudents.forEach(s => {
+                    const bmi = parseFloat(this.calculateBMI(s));
+                    if(bmi <= 18.5) stats.under++;
+                    else if(bmi <= 22.9) stats.normal++;
+                    else if(bmi <= 27.4) stats.over++;
+                    else stats.obese++;
+                });
+                this.bmiStats = stats;
+
+                // วาดกราฟ Overview
+                const ctx = document.getElementById('adminOverviewChart');
+                if(!ctx) return;
+                if(this.overviewChart) this.overviewChart.destroy();
+
+                this.overviewChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['น้ำหนักน้อย', 'ปกติ', 'น้ำหนักเกิน', 'อ้วน'],
+                        datasets: [{
+                            label: 'จำนวนนิสิต (คน)',
+                            data: [stats.under, stats.normal, stats.over, stats.obese],
+                            backgroundColor: ['#93C5FD', '#86EFAC', '#FCA5A5', '#EF4444'],
+                            borderRadius: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+                    }
+                });
+            },
+            calculateBMI(s) {
+                if(!s.weight || !s.height) return 0;
+                return (s.weight / ((s.height/100)**2)).toFixed(1);
+            },
+            getBMIColor(s) {
+                const bmi = this.calculateBMI(s);
+                if(bmi <= 18.5) return 'bg-blue-100 text-blue-700';
+                if(bmi <= 22.9) return 'bg-green-100 text-green-700';
+                if(bmi <= 27.4) return 'bg-yellow-100 text-yellow-700';
+                return 'bg-red-100 text-red-700';
+            },
+            calculateStats(f) {
+                const bmi = this.calculateBMI(f);
+                const whr = (f.waist && f.hip) ? (f.waist / f.hip).toFixed(2) : 0;
+                const res = {};
+                
+                if (bmi <= 18.5) res.bmi = { label: 'BMI', val: bmi, status: 'น้ำหนักน้อย' };
+                else if (bmi <= 22.9) res.bmi = { label: 'BMI', val: bmi, status: 'ปกติ' };
+                else if (bmi <= 27.4) res.bmi = { label: 'BMI', val: bmi, status: 'น้ำหนักเกิน' };
+                else res.bmi = { label: 'BMI', val: bmi, status: 'อ้วน' };
+
+                let whrStatus = 'มาตรฐาน'; 
+                if (f.gender === 'male') whrStatus = whr > 0.88 ? 'สูงกว่ามาตรฐาน' : (whr >= 0.83 ? 'มาตรฐาน' : 'น้อยกว่ามาตรฐาน');
+                else whrStatus = whr > 0.77 ? 'สูงกว่ามาตรฐาน' : (whr >= 0.71 ? 'มาตรฐาน' : 'น้อยกว่ามาตรฐาน');
+                res.whr = { label: 'สัดส่วนเอว/สะโพก', val: whr, status: whrStatus };
+
+                let flexStatus = '';
+                if (f.gender === 'male') { if (f.flexibility > 24) flexStatus = 'ดีมาก'; else if (f.flexibility >= 17) flexStatus = 'ดี'; else if (f.flexibility >= 9) flexStatus = 'ปานกลาง'; else if (f.flexibility >= 2) flexStatus = 'น้อย'; else flexStatus = 'ปรับปรุง'; } 
+                else { if (f.flexibility > 27) flexStatus = 'ดีมาก'; else if (f.flexibility >= 20) flexStatus = 'ดี'; else if (f.flexibility >= 13) flexStatus = 'ปานกลาง'; else if (f.flexibility >= 5) flexStatus = 'น้อย'; else flexStatus = 'ปรับปรุง'; }
+                res.flex = { label: 'ความอ่อนตัว', val: f.flexibility, status: flexStatus };
+
+                let sitStatus = '';
+                if(f.gender === 'male') { if(f.situp > 52) sitStatus='ดีมาก'; else if(f.situp >= 42) sitStatus='ดี'; else if(f.situp >= 32) sitStatus='ปานกลาง'; else if(f.situp >= 23) sitStatus='น้อย'; else sitStatus='ปรับปรุง'; }
+                else { if(f.situp > 49) sitStatus='ดีมาก'; else if(f.situp >= 41) sitStatus='ดี'; else if(f.situp >= 32) sitStatus='ปานกลาง'; else if(f.situp >= 23) sitStatus='น้อย'; else sitStatus='ปรับปรุง'; }
+                res.situp = { label: 'ลุกนั่ง', val: f.situp, status: sitStatus };
+
+                let pushStatus = '';
+                if(f.gender === 'male') { if(f.pushup > 50) pushStatus='สูงกว่ามาตรฐาน'; else if(f.pushup >= 37) pushStatus='มาตรฐาน'; else pushStatus='น้อยกว่ามาตรฐาน'; }
+                else { if(f.pushup > 43) pushStatus='สูงกว่ามาตรฐาน'; else if(f.pushup >= 32) pushStatus='มาตรฐาน'; else pushStatus='น้อยกว่ามาตรฐาน'; }
+                res.pushup = { label: 'ดันพื้น', val: f.pushup, status: pushStatus };
+
+                let ssStatus = '';
+                if(f.gender === 'male') { if(f.standsit > 54) ssStatus='ดีมาก'; else if(f.standsit >= 46) ssStatus='ดี'; else if(f.standsit >= 39) ssStatus='ปานกลาง'; else if(f.standsit >= 32) ssStatus='น้อย'; else ssStatus='ปรับปรุง'; }
+                else { if(f.standsit > 49) ssStatus='ดีมาก'; else if(f.standsit >= 41) ssStatus='ดี'; else if(f.standsit >= 33) ssStatus='ปานกลาง'; else if(f.standsit >= 25) ssStatus='น้อย'; else ssStatus='ปรับปรุง'; }
+                res.standsit = { label: 'ยืน-นั่ง', val: f.standsit, status: ssStatus };
+
+                let stepStatus = '';
+                if(f.gender === 'male') { if(f.stepup > 187) stepStatus='ดีมาก'; else if(f.stepup >= 164) stepStatus='ดี'; else if(f.stepup >= 141) stepStatus='ปานกลาง'; else if(f.stepup >= 118) stepStatus='น้อย'; else stepStatus='ปรับปรุง'; }
+                else { if(f.stepup > 178) stepStatus='ดีมาก'; else if(f.stepup >= 155) stepStatus='ดี'; else if(f.stepup >= 133) stepStatus='ปานกลาง'; else if(f.stepup >= 110) stepStatus='น้อย'; else stepStatus='ปรับปรุง'; }
+                res.stepup = { label: 'ยืนยกเข่า', val: f.stepup, status: stepStatus };
+
+                let runStatus = 'ปรับปรุง';
+                let runVal = parseFloat(f.run800);
+                if (!isNaN(runVal)) {
+                    if (f.gender === 'male') { if (runVal < 2.30) runStatus = 'ดีมาก'; else if (runVal <= 3.00) runStatus = 'ดี'; else if (runVal <= 3.30) runStatus = 'ปานกลาง'; else if (runVal <= 4.40) runStatus = 'น้อย'; else runStatus = 'ปรับปรุง'; } 
+                    else { if (runVal < 3.00) runStatus = 'ดีมาก'; else if (runVal <= 3.30) runStatus = 'ดี'; else if (runVal <= 4.10) runStatus = 'ปานกลาง'; else if (runVal <= 4.40) runStatus = 'น้อย'; else runStatus = 'ปรับปรุง'; }
+                }
+                res.run = { label: 'เดิน-วิ่ง 800ม.', val: f.run800, status: runStatus };
+                return res;
+            },
+            renderChart(canvasId, resultData) {
+                const ctx = document.getElementById(canvasId);
+                if(!ctx) return;
+                
+                if (canvasId === 'userRadarChart' && this.myChart) this.myChart.destroy();
+                if (canvasId === 'adminRadarChart' && this.adminChart) this.adminChart.destroy();
+
+                const scoreMap = { 'ดีมาก': 5, 'สูงกว่ามาตรฐาน': 5, 'ดี': 4, 'มาตรฐาน': 4, 'ปกติ': 4, 'ปานกลาง': 3, 'น้อย': 2, 'น้อยกว่ามาตรฐาน': 2, 'ปรับปรุง': 1, 'น้ำหนักน้อย': 2, 'น้ำหนักเกิน': 2, 'อ้วน': 1 };
+                const data = [scoreMap[resultData.bmi.status], scoreMap[resultData.flex.status], scoreMap[resultData.situp.status], scoreMap[resultData.pushup.status], scoreMap[resultData.standsit.status], scoreMap[resultData.stepup.status], scoreMap[resultData.run.status]];
+                const config = {
+                    type: 'radar',
+                    data: {
+                        labels: ['BMI', 'อ่อนตัว', 'ลุกนั่ง', 'ดันพื้น', 'ยืน-นั่ง', 'ยกเข่า', 'วิ่ง'],
+                        datasets: [{ label: 'ระดับสมรรถภาพ', data: data, fill: true, backgroundColor: 'rgba(59, 130, 246, 0.2)', borderColor: 'rgb(59, 130, 246)', pointBackgroundColor: 'rgb(59, 130, 246)', pointBorderColor: '#fff' }]
+                    },
+                    options: { maintainAspectRatio: false, scales: { r: { suggestedMin: 0, suggestedMax: 5, ticks: { display: false, stepSize: 1 } } }, plugins: { legend: { display: false } } }
+                };
+                if (canvasId === 'userRadarChart') this.myChart = new Chart(ctx, config);
+                else this.adminChart = new Chart(ctx, config);
+            },
+            getColorClass(status) {
+                if (['ดีมาก', 'ดี', 'ปกติ', 'มาตรฐาน', 'สูงกว่ามาตรฐาน'].includes(status)) return 'bg-green-100 text-green-800';
+                if (['ปานกลาง'].includes(status)) return 'bg-yellow-100 text-yellow-800';
+                return 'bg-red-100 text-red-800';
+            }
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
